@@ -1,6 +1,6 @@
 CC=g++
 CFLAGS=-c -g -Wall
-LDFLAGS=-lpthread
+LDFLAGS=-lpthread -lrt
 SOURCES=test_shmringbuffer.cc
 OBJECTS=$(SOURCES:.cc=.o)
 EXECUTABLE=shmringbuf
