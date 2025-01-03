@@ -28,7 +28,7 @@ int main() {
   pid_t wpid;
   if (pid1 == 0) {
     // child process must start after master process
-    usleep(500);
+    usleep(5000);
     ShmRingBuffer<LogNode> buffer(CAPACITY, false);
     int start = 1000;
     LogNode log;
@@ -45,13 +45,16 @@ int main() {
     pid_t pid2 = fork();
     if (pid2 == 0) {
       // Child2, reading
-      usleep(500);
+      usleep(5000);
       ShmRingBuffer<LogNode> buffer(CAPACITY, false);
-      for (int i = 0; i < 20; ++i) {
-        auto node = buffer.dump_front();
-        std::cout << string(node.unparse()) << std::endl;
+      LogNode tmp;
+      int cnt{0};
+      while (buffer.pop_front(tmp)) {
+        std::cout << "pop_ front: " << string(tmp.unparse()) << std::endl;
+        cnt++;
         usleep(rand() % 900 + 500);
       }
+      std::cout << "Child2: popped " << cnt << " logs." << std::endl;
       exit(0);
 
     } else if (pid2 > 0) {

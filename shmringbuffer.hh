@@ -7,7 +7,6 @@
 #include <cstdlib>
 #include <fcntl.h> /* For O_CREAT, O_RDWR */
 #include <pthread.h>
-#include <signal.h>
 #include <string>
 #include <sys/mman.h> /* shared memory and mmap() */
 #include <sys/mman.h>
@@ -46,7 +45,7 @@ public:
 
   void clear();              // clear buffer
   void push_back(const T &); // insert new event
-  T dump_front();
+  bool pop_front(T &);
   string unparse() const; // dump contents in the buffer to a string
 
 private:
@@ -294,19 +293,19 @@ template <typename T> inline void ShmRingBuffer<T>::push_back(const T &e) {
   _lock->write_unlock();
 }
 
-template <typename T> inline T ShmRingBuffer<T>::dump_front() {
+template <typename T> inline bool ShmRingBuffer<T>::pop_front(T &dst) {
   assert(_hdr != NULL);
   assert(_v != NULL);
-
-  T ret;
+  bool success = false;
   _lock->write_lock();
   if (_hdr->_begin != _hdr->_end) {
-    ret = *(_v + _hdr->_begin);
+    dst = *(_v + _hdr->_begin);
     _hdr->_begin = (_hdr->_begin + 1) % _hdr->_capacity;
     _hdr->_cnt--; // removing consumed entities
+    success = true;
   }
   _lock->write_unlock();
-  return ret;
+  return success;
 }
 
 template <typename T> inline string ShmRingBuffer<T>::unparse() const {
