@@ -37,7 +37,7 @@ int main() {
       snprintf(log.log, MAX_LOG_LEN, "%zu: %d", buffer.end(), i);
       buffer.push_back(log);
       std::cout << "child: insert " << i << ", index " << buffer.end()
-                << std::endl; // FIXME
+                << "; count: " << buffer.count() << std::endl; // FIXME
       usleep(rand() % 1000 + 500);
     }
     exit(0);
@@ -64,7 +64,7 @@ int main() {
         snprintf(log.log, MAX_LOG_LEN, "%zu: %d", buffer.end(), i);
         buffer.push_back(log);
         std::cout << "parent: insert " << i << ", index " << buffer.end()
-                  << std::endl; // FIXME
+                  << "; count: " << buffer.count() << std::endl; // FIXME
         usleep(rand() % 900 + 500);
       }
 

@@ -2,6 +2,7 @@
 #define __SHMRINGBUFFER_HH__
 
 #include <assert.h>
+#include <cstddef>
 #include <cstdio>
 #include <cstdlib>
 #include <fcntl.h> /* For O_CREAT, O_RDWR */
@@ -41,6 +42,7 @@ public:
   size_t capacity() const;
   size_t begin() const;
   size_t end() const;
+  size_t count() const;
 
   void clear();              // clear buffer
   void push_back(const T &); // insert new event
@@ -158,6 +160,7 @@ private:
     size_t _capacity; // max number of logs
     int _begin;       // start index of the circular buffer
     int _end;         // end index of the circular buffer
+    int _cnt;         // number of entries in the circular buffer
   } ShmHeader;
 
   ShmHeader *_hdr;
@@ -200,6 +203,16 @@ template <typename T> inline size_t ShmRingBuffer<T>::end() const {
   size_t idx = 0;
   _lock->read_lock();
   idx = _hdr->_end;
+  _lock->read_unlock();
+  return idx;
+}
+
+template <typename T> inline size_t ShmRingBuffer<T>::count() const {
+  assert(_hdr != NULL);
+
+  size_t idx = 0;
+  _lock->read_lock();
+  idx = _hdr->_cnt;
   _lock->read_unlock();
   return idx;
 }
@@ -270,10 +283,14 @@ template <typename T> inline void ShmRingBuffer<T>::push_back(const T &e) {
 
   _lock->write_lock();
   memcpy(_v + _hdr->_end, &e, sizeof(e));
+  _hdr->_cnt++; // increment count of entries in the buffer
   _hdr->_end = (_hdr->_end + 1) %
                _hdr->_capacity;   // make sure index is in range [0..._capacity)
   if (_hdr->_end == _hdr->_begin) // buffer is full, advance begin index, too
+  {
     _hdr->_begin = (_hdr->_begin + 1) % _hdr->_capacity;
+    _hdr->_cnt--; // replacing exiting entities
+  }
   _lock->write_unlock();
 }
 
@@ -286,6 +303,7 @@ template <typename T> inline T ShmRingBuffer<T>::dump_front() {
   if (_hdr->_begin != _hdr->_end) {
     ret = *(_v + _hdr->_begin);
     _hdr->_begin = (_hdr->_begin + 1) % _hdr->_capacity;
+    _hdr->_cnt--; // removing consumed entities
   }
   _lock->write_unlock();
   return ret;
