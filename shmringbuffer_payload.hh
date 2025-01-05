@@ -1,16 +1,19 @@
-#ifndef __SHMRINGBUFFER_HH__
-#define __SHMRINGBUFFER_HH__
+#ifndef __SHMRINGBUFFERPAYLOAD_HH__
+#define __SHMRINGBUFFERPAYLOAD_HH__
 
 #include <assert.h>
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <fcntl.h> /* For O_CREAT, O_RDWR */
 #include <pthread.h>
 #include <string>
 #include <sys/mman.h> /* shared memory and mmap() */
 #include <sys/mman.h>
 #include <sys/stat.h> /* S_IRWXU */
+#include <sys/types.h>
 #include <unistd.h>
 
 using std::string;
@@ -20,15 +23,15 @@ using std::string;
 //
 // T must be POD type
 #define EVENT_BUFFER_SHM "/shm_ring_buffer"
-template <typename T> class ShmRingBuffer {
+class ShmRingBufferPayload {
 public:
-  ShmRingBuffer(size_t cap = 100, bool master = false,
-                const char *path = EVENT_BUFFER_SHM)
+  ShmRingBufferPayload(size_t cap = 2048, bool master = false,
+                       const char *path = EVENT_BUFFER_SHM)
       : _hdr(NULL), _lock(NULL), _v(NULL), _shm_path(path), _shm_size(0),
         _master(master) {
     init(cap, master, path);
   }
-  ~ShmRingBuffer() {
+  ~ShmRingBufferPayload() {
     if (_hdr)
       munmap((void *)_hdr, _shm_size);
     _hdr = NULL;
@@ -43,9 +46,9 @@ public:
   size_t end() const;
   size_t count() const;
 
-  void clear();              // clear buffer
-  void push_back(const T &); // insert new event
-  bool pop_front(T &);
+  void clear();                           // clear buffer
+  bool push_back(const char *, uint32_t); // insert new event
+  bool pop_front(char *);
   string unparse() const; // dump contents in the buffer to a string
 
 private:
@@ -164,7 +167,7 @@ private:
 
   ShmHeader *_hdr;
   ReadWriteLock *_lock;
-  T *_v; // pointer to the head of event buffer
+  char *_v; // pointer to the head of event buffer
   string _shm_path;
   size_t _shm_size; // size(bytes) of shared memory
   bool _master;
@@ -172,7 +175,7 @@ private:
   bool init(size_t cap, bool master, const char *path);
 };
 
-template <typename T> inline size_t ShmRingBuffer<T>::capacity() const {
+inline size_t ShmRingBufferPayload::capacity() const {
   assert(_hdr != NULL);
 
   size_t cap = 0;
@@ -182,7 +185,7 @@ template <typename T> inline size_t ShmRingBuffer<T>::capacity() const {
   return cap;
 }
 
-template <typename T> inline size_t ShmRingBuffer<T>::begin() const {
+inline size_t ShmRingBufferPayload::begin() const {
   assert(_hdr != NULL);
 
   size_t idx = 0;
@@ -191,8 +194,7 @@ template <typename T> inline size_t ShmRingBuffer<T>::begin() const {
   _lock->read_unlock();
   return idx;
 }
-
-template <typename T> inline size_t ShmRingBuffer<T>::end() const {
+inline size_t ShmRingBufferPayload::end() const {
   assert(_hdr != NULL);
 
   size_t idx = 0;
@@ -202,7 +204,7 @@ template <typename T> inline size_t ShmRingBuffer<T>::end() const {
   return idx;
 }
 
-template <typename T> inline size_t ShmRingBuffer<T>::count() const {
+inline size_t ShmRingBufferPayload::count() const {
   assert(_hdr != NULL);
 
   size_t idx = 0;
@@ -212,8 +214,8 @@ template <typename T> inline size_t ShmRingBuffer<T>::count() const {
   return idx;
 }
 
-template <typename T>
-inline bool ShmRingBuffer<T>::init(size_t cap, bool master, const char *path) {
+inline bool ShmRingBufferPayload::init(size_t cap, bool master,
+                                       const char *path) {
   assert(path != NULL);
   int shm_fd{0};
   // Only master can open shm and master process must be started before any
@@ -229,7 +231,7 @@ inline bool ShmRingBuffer<T>::init(size_t cap, bool master, const char *path) {
     exit(1);
   }
 
-  _shm_size = sizeof(ShmHeader) + sizeof(ReadWriteLock) + cap * sizeof(T);
+  _shm_size = sizeof(ShmHeader) + sizeof(ReadWriteLock) + cap;
   if (master && (ftruncate(shm_fd, _shm_size) < 0)) {
     perror("ftruncate failed, exiting...");
     shm_unlink(path);
@@ -250,7 +252,7 @@ inline bool ShmRingBuffer<T>::init(size_t cap, bool master, const char *path) {
   assert(_hdr != NULL);
   _lock = reinterpret_cast<ReadWriteLock *>((char *)_hdr + sizeof(ShmHeader));
   assert(_lock != NULL);
-  _v = reinterpret_cast<T *>((char *)_lock + sizeof(ReadWriteLock));
+  _v = (char *)_lock + sizeof(ReadWriteLock);
   assert(_v != NULL);
 
   if (master) {
@@ -262,7 +264,7 @@ inline bool ShmRingBuffer<T>::init(size_t cap, bool master, const char *path) {
   return true;
 }
 
-template <typename T> inline void ShmRingBuffer<T>::clear() {
+inline void ShmRingBufferPayload::clear() {
   if (!_hdr || !_lock)
     return;
 
@@ -272,31 +274,74 @@ template <typename T> inline void ShmRingBuffer<T>::clear() {
   _lock->write_unlock();
 }
 
-template <typename T> inline void ShmRingBuffer<T>::push_back(const T &e) {
+inline bool ShmRingBufferPayload::push_back(const char *begin, uint32_t len) {
   assert(_hdr != NULL);
   assert(_v != NULL);
 
   _lock->write_lock();
-  memcpy(_v + _hdr->_end, &e, sizeof(e));
-  _hdr->_cnt++; // increment count of entries in the buffer
-  _hdr->_end = (_hdr->_end + 1) %
-               _hdr->_capacity;   // make sure index is in range [0..._capacity)
-  if (_hdr->_end == _hdr->_begin) // buffer is full, advance begin index, too
-  {
-    _hdr->_begin = (_hdr->_begin + 1) % _hdr->_capacity;
-    _hdr->_cnt--; // replacing exiting entities
+  // check space left
+
+  uint32_t _bytes_left{0};
+  uint32_t _rel_end = _hdr->_end;
+
+  if (_hdr->_begin != _hdr->_end) { // not empty
+    uint32_t tmp{0};
+    // memcpy(&tmp, _v + _hdr->_end, 1); // len of last payload
+    // memcpy((char *)&tmp + 1, _v + ((_hdr->_end + 1) % _hdr->_capacity), 1);
+    // memcpy((char *)&tmp + 2, _v + ((_hdr->_end + 2) % _hdr->_capacity), 1);
+    // memcpy((char *)&tmp + 3, _v + ((_hdr->_end + 3) % _hdr->_capacity), 1);
+
+    for (int i = 0; i < 4; ++i) { // deserialize count byte-wise
+      memcpy((char *)&tmp + i, _v + ((_hdr->_end + i) % _hdr->_capacity), 1);
+    }
+
+    _rel_end = (_hdr->_end + sizeof(uint32_t) + tmp) %
+               _hdr->_capacity; // end of last payload
+    _bytes_left =
+        (_hdr->_begin >= _rel_end) // if _hdr->begin == _rel_end, then buffer is
+                                   // full(possible, but not likely)
+            ? _hdr->_begin - _rel_end
+            : _hdr->_begin + _hdr->_capacity - _rel_end; // bytes left
+  } else {                                               // ring buffer empty
+    _bytes_left = _hdr->_capacity - sizeof(uint32_t);
   }
+
+  if (_bytes_left < len + sizeof(uint32_t)) {
+    return false; // not enough space to hold payload
+  }
+
+  // copy len
+  for (int i = 0; i < 4; ++i) {
+    memcpy(_v + (_rel_end + i) % _hdr->_capacity, (char *)&len + i, 1);
+  }
+  // copy payload
+  for (int i = 0; i < len; ++i) {
+    memcpy(_v + (_rel_end + sizeof(uint32_t) + i) % _hdr->_capacity, begin + i,
+           1);
+  }
+
+  _hdr->_cnt++; // increment count of entries in the buffer
+  // move end index
+  _hdr->_end = (_hdr->_end + sizeof(uint32_t) + len) % _hdr->_capacity;
   _lock->write_unlock();
 }
 
-template <typename T> inline bool ShmRingBuffer<T>::pop_front(T &dst) {
+inline bool ShmRingBufferPayload::pop_front(char *dst) {
   assert(_hdr != NULL);
   assert(_v != NULL);
   bool success = false;
   _lock->write_lock();
   if (_hdr->_begin != _hdr->_end) {
-    dst = *(_v + _hdr->_begin);
-    _hdr->_begin = (_hdr->_begin + 1) % _hdr->_capacity;
+    uint32_t tmp{0};
+    for (int i = 0; i < 4; ++i) { // deserialize count byte-wise
+      memcpy((char *)&tmp + i, _v + ((_hdr->_begin + i) % _hdr->_capacity), 1);
+    }
+    // copy data
+    for (int i = 0; i < tmp; ++i) {
+      memcpy(dst + i,
+             _v + (_hdr->_begin + sizeof(uint32_t) + i) % _hdr->_capacity, 1);
+    }
+    _hdr->_begin = (_hdr->_begin + sizeof(uint32_t) + tmp) % _hdr->_capacity;
     _hdr->_cnt--; // removing consumed entities
     success = true;
   }
@@ -304,7 +349,7 @@ template <typename T> inline bool ShmRingBuffer<T>::pop_front(T &dst) {
   return success;
 }
 
-template <typename T> inline string ShmRingBuffer<T>::unparse() const {
+inline string ShmRingBufferPayload::unparse() const {
   assert(_hdr != NULL);
   assert(_v != NULL);
 
@@ -313,11 +358,6 @@ template <typename T> inline string ShmRingBuffer<T>::unparse() const {
   if (_hdr->_begin == _hdr->_end) {
     _lock->read_unlock();
     return string();
-  }
-
-  for (int i = _hdr->_begin; i != _hdr->_end; i = (i + 1) % _hdr->_capacity) {
-    ret += string((_v + i)->unparse()) +
-           "\n"; // Suppose T has a unparse() member function
   }
   _lock->read_unlock();
   return ret;
