@@ -1,6 +1,6 @@
-# shm_ring_buffer_payload
+# shm_ring_buffer for variable-length payloads
 
-This is an derived version of shared memory ring buffer developed by Bo Yang, which can only support fixed-lengthed data. This can be used for *variable-length* bytes streams. User can use this ring buffer to store and pop variable lengthed bytes streams. See the `test_shmringbuffer_payload.cc` tests for how to use it. Test results:
+This is a derived version of shared memory ring buffer developed by Bo Yang. While the original version can only support fixed-lengthed POD data, this one can be used for *variable-length* bytes streams. User can use this ring buffer to store and pop variable lengthed bytes streams. See the `test_shmringbuffer_payload.cc` tests for how to use it. Test results:
 
 ```
 ...
