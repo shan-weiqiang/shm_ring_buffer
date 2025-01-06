@@ -1,3 +1,12 @@
+
+Copyright (c) [2025] [shan weiqiang].
+https://github.com/shan-weiqiang/shm_ring_buffer
+
+The code in this file includes modifications and additions to the original
+work which is licensed under the MIT License. See below for the original
+copyright notice.
+
+ ----------------------------------------------------------------------------
 MIT License
 
 Copyright (c) 2016 Bo Yang
@@ -19,3 +28,7 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+----------------------------------------------------------------------------
+
+Modifications and additional functionality were added by [shan weiqiang].
+These modifications are licensed under the terms of the MIT License

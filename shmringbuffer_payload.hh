@@ -1,3 +1,39 @@
+/*
+* Copyright (c) [2025] [shan weiqiang].
+* https://github.com/shan-weiqiang/shm_ring_buffer
+*
+* The code in this file includes modifications and additions to the original
+* work which is licensed under the MIT License. See below for the original
+* copyright notice.
+*
+* ----------------------------------------------------------------------------
+* MIT License
+
+* Copyright (c) 2016 Bo Yang
+*
+* Permission is hereby granted, free of charge, to any person obtaining a copy
+* of this software and associated documentation files (the "Software"), to deal
+* in the Software without restriction, including without limitation the rights
+* to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+* copies of the Software, and to permit persons to whom the Software is
+* furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in all
+* copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+* AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+* OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+* SOFTWARE.
+* ----------------------------------------------------------------------------
+*
+* Modifications and additional functionality were added by [shan weiqiang].
+* These modifications are licensed under the terms of the MIT License
+*/
+
 #ifndef __SHMRINGBUFFERPAYLOAD_HH__
 #define __SHMRINGBUFFERPAYLOAD_HH__
 
@@ -19,9 +55,8 @@
 using std::string;
 
 //
-// Shared-memory based Ring buffer.
+// Shared-memory based Ring buffer for variable-length bytes stream.
 //
-// T must be POD type
 #define EVENT_BUFFER_SHM "/shm_ring_buffer"
 class ShmRingBufferPayload {
 public:
@@ -48,7 +83,7 @@ public:
 
   void clear();                           // clear buffer
   bool push_back(const char *, uint32_t); // insert new event
-  bool pop_front(char *);
+  bool pop_front(char *, uint32_t);
   string unparse() const; // dump contents in the buffer to a string
 
 private:
@@ -280,68 +315,75 @@ inline bool ShmRingBufferPayload::push_back(const char *begin, uint32_t len) {
 
   _lock->write_lock();
   // check space left
-
   uint32_t _bytes_left{0};
-  uint32_t _rel_end = _hdr->_end;
 
-  if (_hdr->_begin != _hdr->_end) { // not empty
-    uint32_t tmp{0};
-    // memcpy(&tmp, _v + _hdr->_end, 1); // len of last payload
-    // memcpy((char *)&tmp + 1, _v + ((_hdr->_end + 1) % _hdr->_capacity), 1);
-    // memcpy((char *)&tmp + 2, _v + ((_hdr->_end + 2) % _hdr->_capacity), 1);
-    // memcpy((char *)&tmp + 3, _v + ((_hdr->_end + 3) % _hdr->_capacity), 1);
-
-    for (int i = 0; i < 4; ++i) { // deserialize count byte-wise
-      memcpy((char *)&tmp + i, _v + ((_hdr->_end + i) % _hdr->_capacity), 1);
-    }
-
-    _rel_end = (_hdr->_end + sizeof(uint32_t) + tmp) %
-               _hdr->_capacity; // end of last payload
-    _bytes_left =
-        (_hdr->_begin >= _rel_end) // if _hdr->begin == _rel_end, then buffer is
-                                   // full(possible, but not likely)
-            ? _hdr->_begin - _rel_end
-            : _hdr->_begin + _hdr->_capacity - _rel_end; // bytes left
-  } else {                                               // ring buffer empty
+  if (_hdr->_begin != _hdr->_end) {
+    _bytes_left = (_hdr->_begin > _hdr->_end)
+                      ? _hdr->_begin - _hdr->_end
+                      : _hdr->_begin + _hdr->_capacity - _hdr->_end;
+    // _hdr->_begin == _hdr->_end has two implications: empty or full
+  } else if (_hdr->_cnt == 0) {
     _bytes_left = _hdr->_capacity - sizeof(uint32_t);
+  } else {
+    _bytes_left = 0;
   }
 
   if (_bytes_left < len + sizeof(uint32_t)) {
     return false; // not enough space to hold payload
   }
 
-  // copy len
+  // copy len info
   for (int i = 0; i < 4; ++i) {
-    memcpy(_v + (_rel_end + i) % _hdr->_capacity, (char *)&len + i, 1);
+    memcpy(_v + (_hdr->_end + i) % _hdr->_capacity, (char *)&len + i, 1);
   }
+  _hdr->_end = (_hdr->_end + sizeof(uint32_t)) % _hdr->_capacity;
   // copy payload
-  for (int i = 0; i < len; ++i) {
-    memcpy(_v + (_rel_end + sizeof(uint32_t) + i) % _hdr->_capacity, begin + i,
-           1);
+  if ((_hdr->_begin > _hdr->_end) ||
+      (_hdr->_capacity - _hdr->_end >=
+       len)) { // one copy is enough(len can be 0)
+    memcpy(_v + _hdr->_end, begin, len);
+  } else { // need two copies
+    uint32_t _fir_copy = _hdr->_capacity - _hdr->_end;
+    memcpy(_v + _hdr->_end, begin, _fir_copy);
+    memcpy(_v, begin + _fir_copy, len - _fir_copy);
   }
-
   _hdr->_cnt++; // increment count of entries in the buffer
-  // move end index
-  _hdr->_end = (_hdr->_end + sizeof(uint32_t) + len) % _hdr->_capacity;
+  _hdr->_end = (_hdr->_end + len) % _hdr->_capacity; // move end index
   _lock->write_unlock();
+  return true;
 }
-
-inline bool ShmRingBufferPayload::pop_front(char *dst) {
+/**
+ * IMPORTANT:Caller need to know previously about the max length of all
+ * payloads. Since multiple readers and writers are suppotted, we cannot give
+ * lenght of next payload to the caller. Also we cannot give a max length of all
+ * stored payloads from within. User need to record max length according to
+ * push_back(..) calls and assure that legal_len is enough to hold the
+ * about-to-popped payload.
+ */
+inline bool ShmRingBufferPayload::pop_front(char *dst, uint32_t legal_len) {
   assert(_hdr != NULL);
   assert(_v != NULL);
   bool success = false;
   _lock->write_lock();
-  if (_hdr->_begin != _hdr->_end) {
-    uint32_t tmp{0};
+  if (_hdr->_cnt != 0) {
+    uint32_t len{0};
     for (int i = 0; i < 4; ++i) { // deserialize count byte-wise
-      memcpy((char *)&tmp + i, _v + ((_hdr->_begin + i) % _hdr->_capacity), 1);
+      memcpy((char *)&len + i, _v + ((_hdr->_begin + i) % _hdr->_capacity), 1);
     }
+    if (legal_len < len) {
+      _lock->write_unlock();
+      return false; // not enough space to hold payload
+    }
+    _hdr->_begin = (_hdr->_begin + sizeof(uint32_t)) % _hdr->_capacity;
     // copy data
-    for (int i = 0; i < tmp; ++i) {
-      memcpy(dst + i,
-             _v + (_hdr->_begin + sizeof(uint32_t) + i) % _hdr->_capacity, 1);
+    if (_hdr->_end > _hdr->_begin || _hdr->_capacity - _hdr->_begin >= len) {
+      memcpy(dst, _v + _hdr->_begin, len); // one copy(len can be 0)
+    } else {                               // two copies
+      uint32_t _fir_copy = _hdr->_capacity - _hdr->_begin;
+      memcpy(dst, _v + _hdr->_begin, _fir_copy);
+      memcpy(dst + _fir_copy, _v, len - _fir_copy);
     }
-    _hdr->_begin = (_hdr->_begin + sizeof(uint32_t) + tmp) % _hdr->_capacity;
+    _hdr->_begin = (_hdr->_begin + len) % _hdr->_capacity;
     _hdr->_cnt--; // removing consumed entities
     success = true;
   }
