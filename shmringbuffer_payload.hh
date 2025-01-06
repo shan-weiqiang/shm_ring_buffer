@@ -329,6 +329,7 @@ inline bool ShmRingBufferPayload::push_back(const char *begin, uint32_t len) {
   }
 
   if (_bytes_left < len + sizeof(uint32_t)) {
+    _lock->write_unlock();
     return false; // not enough space to hold payload
   }
 

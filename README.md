@@ -1,3 +1,89 @@
+# shm_ring_buffer_payload
+
+This is an derived version of shared memory ring buffer developed by Bo Yang, which can only support fixed-lengthed data. This can be used for *variable-length* bytes streams. User can use this ring buffer to store and pop variable lengthed bytes streams. See the `test_shmringbuffer_payload.cc` tests for how to use it. Test results:
+
+```
+...
+
+child: insert 10990, index 672; count: 55; length: 15
+parent: insert 10994, index 672; count: 55; length: 15
+pop_ front: china shangahi
+parent: insert 10995, index 688; count: 55; length: 12
+child: insert 10992, index 688; count: 55; length: 15
+pop_ front: japan tokyo
+pop_ front: china shangahi
+parent: insert 10996, index 707; count: 54; length: 15
+pop_ front: japan tokyo
+child: insert 10994, index 726; count: 54; length: 15
+pop_ front: china shangahi
+pop_ front: china shangahi
+parent: insert 10998, index 745; count: 53; length: 15
+child: insert 10995, index 761; count: 54; length: 12
+pop_ front: china shangahi
+pop_ front: japan tokyo
+child: insert 10996, index 780; count: 53; length: 15
+>>>>>>>>>>> parent pushed: 5214
+pop_ front: china shangahi
+pop_ front: china shangahi
+child: insert 10998, index 799; count: 52; length: 15
+pop_ front: japan tokyo
+pop_ front: china shangahi
+>>>>>>>>>>> child pushed: 5167
+pop_ front: china shangahi
+pop_ front: china shangahi
+pop_ front: japan tokyo
+pop_ front: china shangahi
+pop_ front: japan tokyo
+pop_ front: china shangahi
+pop_ front: china shangahi
+pop_ front: japan tokyo
+pop_ front: china shangahi
+pop_ front: japan tokyo
+pop_ front: china shangahi
+pop_ front: china shangahi
+pop_ front: china shangahi
+pop_ front: japan tokyo
+pop_ front: china shangahi
+pop_ front: china shangahi
+pop_ front: china shangahi
+pop_ front: japan tokyo
+pop_ front: china shangahi
+pop_ front: china shangahi
+pop_ front: china shangahi
+pop_ front: japan tokyo
+pop_ front: china shangahi
+pop_ front: japan tokyo
+pop_ front: china shangahi
+pop_ front: china shangahi
+pop_ front: china shangahi
+pop_ front: japan tokyo
+pop_ front: china shangahi
+pop_ front: china shangahi
+pop_ front: japan tokyo
+pop_ front: china shangahi
+pop_ front: china shangahi
+pop_ front: china shangahi
+pop_ front: japan tokyo
+pop_ front: china shangahi
+pop_ front: china shangahi
+pop_ front: japan tokyo
+pop_ front: china shangahi
+pop_ front: china shangahi
+pop_ front: china shangahi
+pop_ front: japan tokyo
+pop_ front: china shangahi
+pop_ front: japan tokyo
+pop_ front: china shangahi
+pop_ front: china shangahi
+pop_ front: china shangahi
+pop_ front: japan tokyo
+pop_ front: china shangahi
+pop_ front: china shangahi
+pop_front: 10381
+Ring Buffer count:
+0
+```
+
 # shm_ring_buffer
 Shared-memory based ring buffer
 
