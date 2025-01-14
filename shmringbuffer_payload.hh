@@ -86,7 +86,7 @@ public:
 
   void clear();                           // clear buffer
   bool push_back(const char *, uint32_t); // insert new event
-  bool pop_front(char *, uint32_t);
+  int32_t pop_front(char *, uint32_t); // return -1 for fail; payload length for success
   string unparse() const; // dump contents in the buffer to a string
 
 private:
@@ -364,10 +364,10 @@ inline bool ShmRingBufferPayload::push_back(const char *begin, uint32_t len) {
  * push_back(..) calls and assure that legal_len is enough to hold the
  * about-to-popped payload.
  */
-inline bool ShmRingBufferPayload::pop_front(char *dst, uint32_t legal_len) {
+inline int32_t ShmRingBufferPayload::pop_front(char *dst, uint32_t legal_len) {
   assert(_hdr != NULL);
   assert(_v != NULL);
-  bool success = false;
+  int32_t bytes = -1;
   _lock->write_lock();
   if (_hdr->_cnt != 0) {
     uint32_t len{0};
@@ -376,7 +376,7 @@ inline bool ShmRingBufferPayload::pop_front(char *dst, uint32_t legal_len) {
     }
     if (legal_len < len) {
       _lock->write_unlock();
-      return false; // not enough space to hold payload
+      return -1; // not enough space to hold payload
     }
     _hdr->_begin = (_hdr->_begin + sizeof(uint32_t)) % _hdr->_capacity;
     // copy data
@@ -389,10 +389,10 @@ inline bool ShmRingBufferPayload::pop_front(char *dst, uint32_t legal_len) {
     }
     _hdr->_begin = (_hdr->_begin + len) % _hdr->_capacity;
     _hdr->_cnt--; // removing consumed entities
-    success = true;
+    bytes = len;
   }
   _lock->write_unlock();
-  return success;
+  return bytes;
 }
 
 inline string ShmRingBufferPayload::unparse() const {

@@ -62,9 +62,9 @@ int main() {
       ShmRingBufferPayload buffer(CAPACITY, false);
       char buf[100];
       int cnt{0};
-      bool p = buffer.pop_front(buf, 100);
+      auto p = buffer.pop_front(buf, 100);
       // WARN: possible exit before pop all buffers
-      while (p || buffer.count() > 0) {
+      while (p != -1 || buffer.count() > 0) {
         std::cout << "pop_ front: " << buf << std::endl;
         if (p)
           cnt++;
