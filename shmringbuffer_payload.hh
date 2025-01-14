@@ -76,6 +76,9 @@ public:
       shm_unlink(_shm_path.c_str());
   }
 
+  ShmRingBufferPayload(ShmRingBufferPayload &&) = delete;
+  ShmRingBufferPayload(const ShmRingBufferPayload &) = delete;
+
   size_t capacity() const;
   size_t begin() const;
   size_t end() const;
