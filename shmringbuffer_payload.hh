@@ -60,15 +60,17 @@ using std::string;
 #define EVENT_BUFFER_SHM "/shm_ring_buffer"
 class ShmRingBufferPayload {
 public:
-  ShmRingBufferPayload(size_t cap = 2048, bool master = false,
-                       const char *path = EVENT_BUFFER_SHM)
+  ShmRingBufferPayload(
+      size_t cap = 2048,
+      bool master = false,
+      const char* path = EVENT_BUFFER_SHM)
       : _hdr(NULL), _lock(NULL), _v(NULL), _shm_path(path), _shm_size(0),
         _master(master) {
     init(cap, master, path);
   }
   ~ShmRingBufferPayload() {
     if (_hdr)
-      munmap((void *)_hdr, _shm_size);
+      munmap((void*)_hdr, _shm_size);
     _hdr = NULL;
     _lock = NULL;
     _v = NULL;
@@ -76,17 +78,21 @@ public:
       shm_unlink(_shm_path.c_str());
   }
 
-  ShmRingBufferPayload(ShmRingBufferPayload &&) = delete;
-  ShmRingBufferPayload(const ShmRingBufferPayload &) = delete;
+  ShmRingBufferPayload(ShmRingBufferPayload&&) = delete;
+  ShmRingBufferPayload(const ShmRingBufferPayload&) = delete;
 
   size_t capacity() const;
   size_t begin() const;
   size_t end() const;
   size_t count() const;
 
-  void clear();                           // clear buffer
-  bool push_back(const char *, uint32_t); // insert new event
-  int32_t pop_front(char *, uint32_t); // return -1 for fail; payload length for success
+  void clear();                          // clear buffer
+  bool push_back(const char*, uint32_t); // insert new event
+  int32_t pop_front(
+      char*,
+      uint32_t); // return -1 for fail; payload length for success
+  int32_t peek_front(char*, uint32_t); // return -1 for fail; payload length
+                                       // for success; does not remove element
   string unparse() const; // dump contents in the buffer to a string
 
 private:
@@ -125,8 +131,8 @@ private:
       pthread_cond_init(&_cond, &_attr);
     }
 
-    int wait(Mutex &m) { return pthread_cond_wait(&_cond, &m._mutex); }
-    int timedwait(const struct timespec &ts, Mutex &m) {
+    int wait(Mutex& m) { return pthread_cond_wait(&_cond, &m._mutex); }
+    int timedwait(const struct timespec& ts, Mutex& m) {
       return pthread_cond_timedwait(&_cond, &m._mutex, &ts);
     }
     int signal() { return pthread_cond_signal(&_cond); }
@@ -203,14 +209,14 @@ private:
     int _cnt;         // number of entries in the circular buffer
   } ShmHeader;
 
-  ShmHeader *_hdr;
-  ReadWriteLock *_lock;
-  char *_v; // pointer to the head of event buffer
+  ShmHeader* _hdr;
+  ReadWriteLock* _lock;
+  char* _v; // pointer to the head of event buffer
   string _shm_path;
   size_t _shm_size; // size(bytes) of shared memory
   bool _master;
 
-  bool init(size_t cap, bool master, const char *path);
+  bool init(size_t cap, bool master, const char* path);
 };
 
 inline size_t ShmRingBufferPayload::capacity() const {
@@ -252,8 +258,8 @@ inline size_t ShmRingBufferPayload::count() const {
   return idx;
 }
 
-inline bool ShmRingBufferPayload::init(size_t cap, bool master,
-                                       const char *path) {
+inline bool
+ShmRingBufferPayload::init(size_t cap, bool master, const char* path) {
   assert(path != NULL);
   int shm_fd{0};
   // Only master can open shm and master process must be started before any
@@ -276,9 +282,9 @@ inline bool ShmRingBufferPayload::init(size_t cap, bool master,
     exit(1);
   }
 
-  void *pbuf = NULL; /* shared memory adddress */
+  void* pbuf = NULL; /* shared memory adddress */
   pbuf = mmap(NULL, _shm_size, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
-  if (pbuf == (void *)-1) {
+  if (pbuf == (void*)-1) {
     perror("mmap failed, exiting...");
     if (master) {
       shm_unlink(path);
@@ -286,11 +292,11 @@ inline bool ShmRingBufferPayload::init(size_t cap, bool master,
     exit(1);
   }
 
-  _hdr = reinterpret_cast<ShmHeader *>(pbuf);
+  _hdr = reinterpret_cast<ShmHeader*>(pbuf);
   assert(_hdr != NULL);
-  _lock = reinterpret_cast<ReadWriteLock *>((char *)_hdr + sizeof(ShmHeader));
+  _lock = reinterpret_cast<ReadWriteLock*>((char*)_hdr + sizeof(ShmHeader));
   assert(_lock != NULL);
-  _v = (char *)_lock + sizeof(ReadWriteLock);
+  _v = (char*)_lock + sizeof(ReadWriteLock);
   assert(_v != NULL);
 
   if (master) {
@@ -312,7 +318,7 @@ inline void ShmRingBufferPayload::clear() {
   _lock->write_unlock();
 }
 
-inline bool ShmRingBufferPayload::push_back(const char *begin, uint32_t len) {
+inline bool ShmRingBufferPayload::push_back(const char* begin, uint32_t len) {
   assert(_hdr != NULL);
   assert(_v != NULL);
 
@@ -338,7 +344,7 @@ inline bool ShmRingBufferPayload::push_back(const char *begin, uint32_t len) {
 
   // copy len info
   for (int i = 0; i < 4; ++i) {
-    memcpy(_v + (_hdr->_end + i) % _hdr->_capacity, (char *)&len + i, 1);
+    memcpy(_v + (_hdr->_end + i) % _hdr->_capacity, (char*)&len + i, 1);
   }
   _hdr->_end = (_hdr->_end + sizeof(uint32_t)) % _hdr->_capacity;
   // copy payload
@@ -364,7 +370,7 @@ inline bool ShmRingBufferPayload::push_back(const char *begin, uint32_t len) {
  * push_back(..) calls and assure that legal_len is enough to hold the
  * about-to-popped payload.
  */
-inline int32_t ShmRingBufferPayload::pop_front(char *dst, uint32_t legal_len) {
+inline int32_t ShmRingBufferPayload::pop_front(char* dst, uint32_t legal_len) {
   assert(_hdr != NULL);
   assert(_v != NULL);
   int32_t bytes = -1;
@@ -372,7 +378,7 @@ inline int32_t ShmRingBufferPayload::pop_front(char *dst, uint32_t legal_len) {
   if (_hdr->_cnt != 0) {
     uint32_t len{0};
     for (int i = 0; i < 4; ++i) { // deserialize count byte-wise
-      memcpy((char *)&len + i, _v + ((_hdr->_begin + i) % _hdr->_capacity), 1);
+      memcpy((char*)&len + i, _v + ((_hdr->_begin + i) % _hdr->_capacity), 1);
     }
     if (legal_len < len) {
       _lock->write_unlock();
@@ -389,6 +395,37 @@ inline int32_t ShmRingBufferPayload::pop_front(char *dst, uint32_t legal_len) {
     }
     _hdr->_begin = (_hdr->_begin + len) % _hdr->_capacity;
     _hdr->_cnt--; // removing consumed entities
+    bytes = len;
+  }
+  _lock->write_unlock();
+  return bytes;
+}
+
+inline int32_t ShmRingBufferPayload::peek_front(char* dst, uint32_t legal_len) {
+  assert(_hdr != NULL);
+  assert(_v != NULL);
+  int32_t bytes = -1;
+  _lock->write_lock();
+  int origin_begin = _hdr->_begin;
+  if (_hdr->_cnt != 0) {
+    uint32_t len{0};
+    for (int i = 0; i < 4; ++i) { // deserialize count byte-wise
+      memcpy((char*)&len + i, _v + ((_hdr->_begin + i) % _hdr->_capacity), 1);
+    }
+    if (legal_len < len) {
+      _lock->write_unlock();
+      return -1; // not enough space to hold payload
+    }
+    _hdr->_begin = (_hdr->_begin + sizeof(uint32_t)) % _hdr->_capacity;
+    // copy data
+    if (_hdr->_end > _hdr->_begin || _hdr->_capacity - _hdr->_begin >= len) {
+      memcpy(dst, _v + _hdr->_begin, len); // one copy(len can be 0)
+    } else {                               // two copies
+      uint32_t _fir_copy = _hdr->_capacity - _hdr->_begin;
+      memcpy(dst, _v + _hdr->_begin, _fir_copy);
+      memcpy(dst + _fir_copy, _v, len - _fir_copy);
+    }
+    _hdr->_begin = origin_begin;
     bytes = len;
   }
   _lock->write_unlock();

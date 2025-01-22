@@ -1,0 +1,10 @@
+BasedOnStyle: LLVM
+IndentWidth:  2
+ColumnLimit:  80
+Language:     Cpp
+
+AlignAfterOpenBracket: AlwaysBreak
+BinPackArguments:      false
+BinPackParameters:     false
+
+PointerAlignment:      Left

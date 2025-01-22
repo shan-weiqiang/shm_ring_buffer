@@ -22,15 +22,17 @@ using std::string;
 #define EVENT_BUFFER_SHM "/shm_ring_buffer"
 template <typename T> class ShmRingBuffer {
 public:
-  ShmRingBuffer(size_t cap = 100, bool master = false,
-                const char *path = EVENT_BUFFER_SHM)
+  ShmRingBuffer(
+      size_t cap = 100,
+      bool master = false,
+      const char* path = EVENT_BUFFER_SHM)
       : _hdr(NULL), _lock(NULL), _v(NULL), _shm_path(path), _shm_size(0),
         _master(master) {
     init(cap, master, path);
   }
   ~ShmRingBuffer() {
     if (_hdr)
-      munmap((void *)_hdr, _shm_size);
+      munmap((void*)_hdr, _shm_size);
     _hdr = NULL;
     _lock = NULL;
     _v = NULL;
@@ -43,9 +45,9 @@ public:
   size_t end() const;
   size_t count() const;
 
-  void clear();              // clear buffer
-  void push_back(const T &); // insert new event
-  bool pop_front(T &);
+  void clear();             // clear buffer
+  void push_back(const T&); // insert new event
+  bool pop_front(T&);
   string unparse() const; // dump contents in the buffer to a string
 
 private:
@@ -84,8 +86,8 @@ private:
       pthread_cond_init(&_cond, &_attr);
     }
 
-    int wait(Mutex &m) { return pthread_cond_wait(&_cond, &m._mutex); }
-    int timedwait(const struct timespec &ts, Mutex &m) {
+    int wait(Mutex& m) { return pthread_cond_wait(&_cond, &m._mutex); }
+    int timedwait(const struct timespec& ts, Mutex& m) {
       return pthread_cond_timedwait(&_cond, &m._mutex, &ts);
     }
     int signal() { return pthread_cond_signal(&_cond); }
@@ -162,14 +164,14 @@ private:
     int _cnt;         // number of entries in the circular buffer
   } ShmHeader;
 
-  ShmHeader *_hdr;
-  ReadWriteLock *_lock;
-  T *_v; // pointer to the head of event buffer
+  ShmHeader* _hdr;
+  ReadWriteLock* _lock;
+  T* _v; // pointer to the head of event buffer
   string _shm_path;
   size_t _shm_size; // size(bytes) of shared memory
   bool _master;
 
-  bool init(size_t cap, bool master, const char *path);
+  bool init(size_t cap, bool master, const char* path);
 };
 
 template <typename T> inline size_t ShmRingBuffer<T>::capacity() const {
@@ -213,7 +215,7 @@ template <typename T> inline size_t ShmRingBuffer<T>::count() const {
 }
 
 template <typename T>
-inline bool ShmRingBuffer<T>::init(size_t cap, bool master, const char *path) {
+inline bool ShmRingBuffer<T>::init(size_t cap, bool master, const char* path) {
   assert(path != NULL);
   int shm_fd{0};
   // Only master can open shm and master process must be started before any
@@ -236,9 +238,9 @@ inline bool ShmRingBuffer<T>::init(size_t cap, bool master, const char *path) {
     exit(1);
   }
 
-  void *pbuf = NULL; /* shared memory adddress */
+  void* pbuf = NULL; /* shared memory adddress */
   pbuf = mmap(NULL, _shm_size, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
-  if (pbuf == (void *)-1) {
+  if (pbuf == (void*)-1) {
     perror("mmap failed, exiting...");
     if (master) {
       shm_unlink(path);
@@ -246,11 +248,11 @@ inline bool ShmRingBuffer<T>::init(size_t cap, bool master, const char *path) {
     exit(1);
   }
 
-  _hdr = reinterpret_cast<ShmHeader *>(pbuf);
+  _hdr = reinterpret_cast<ShmHeader*>(pbuf);
   assert(_hdr != NULL);
-  _lock = reinterpret_cast<ReadWriteLock *>((char *)_hdr + sizeof(ShmHeader));
+  _lock = reinterpret_cast<ReadWriteLock*>((char*)_hdr + sizeof(ShmHeader));
   assert(_lock != NULL);
-  _v = reinterpret_cast<T *>((char *)_lock + sizeof(ReadWriteLock));
+  _v = reinterpret_cast<T*>((char*)_lock + sizeof(ReadWriteLock));
   assert(_v != NULL);
 
   if (master) {
@@ -272,7 +274,7 @@ template <typename T> inline void ShmRingBuffer<T>::clear() {
   _lock->write_unlock();
 }
 
-template <typename T> inline void ShmRingBuffer<T>::push_back(const T &e) {
+template <typename T> inline void ShmRingBuffer<T>::push_back(const T& e) {
   assert(_hdr != NULL);
   assert(_v != NULL);
 
@@ -289,7 +291,7 @@ template <typename T> inline void ShmRingBuffer<T>::push_back(const T &e) {
   _lock->write_unlock();
 }
 
-template <typename T> inline bool ShmRingBuffer<T>::pop_front(T &dst) {
+template <typename T> inline bool ShmRingBuffer<T>::pop_front(T& dst) {
   assert(_hdr != NULL);
   assert(_v != NULL);
   bool success = false;
