@@ -51,6 +51,7 @@ int main() {
     // WARN: possible exit before pop all buffers
     while (true) {
       std::cout << "peek front: " << buf << std::endl;
+      std::memset(buf, 0, sizeof(buf));
       usleep(rand() % 900 + 500);
       p = buffer.peek_front(buf, 100);
       std::cout << "current cnt: " << buffer.count() << std::endl;

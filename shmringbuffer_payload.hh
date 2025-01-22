@@ -314,6 +314,7 @@ inline void ShmRingBufferPayload::clear() {
 
   _lock->write_lock();
   _hdr->_begin = _hdr->_end = 0;
+  _hdr->_cnt = 0;
   // TODO: memset the shared memory?
   _lock->write_unlock();
 }
