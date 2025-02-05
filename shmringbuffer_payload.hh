@@ -200,15 +200,15 @@ private:
     Mutex _mtx;
     Condition _rcond;
     Condition _wcond;
-    uint32_t _nread, _nread_waiters;
-    uint32_t _nwrite, _nwrite_waiters;
+    size_t _nread, _nread_waiters;
+    size_t _nwrite, _nwrite_waiters;
   };
 
   typedef struct _ShmHeader {
     size_t _capacity; // max number of logs
-    int _begin;       // start index of the circular buffer
-    int _end;         // end index of the circular buffer
-    int _cnt;         // number of entries in the circular buffer
+    size_t _begin;       // start index of the circular buffer
+    size_t _end;         // end index of the circular buffer
+    size_t _cnt;         // number of entries in the circular buffer
   } ShmHeader;
 
   ShmHeader* _hdr;
