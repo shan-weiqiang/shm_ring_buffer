@@ -89,14 +89,14 @@ public:
   size_t end() const;
   size_t count() const;
 
-  void clear();                          // clear buffer
-  bool push_back(const char*, uint32_t); // insert new event
-  std::optional<std::pair<std::unique_ptr<char[]>, uint32_t>> pop_front();
-  std::optional<std::pair<std::unique_ptr<char[]>, uint32_t>> peek_front();
+  void clear();                        // clear buffer
+  bool push_back(const char*, size_t); // insert new event
+  std::optional<std::pair<std::unique_ptr<char[]>, size_t>> pop_front();
+  std::optional<std::pair<std::unique_ptr<char[]>, size_t>> peek_front();
   // for success,does not remove element
 
 private:
-  std::optional<std::pair<std::unique_ptr<char[]>, uint32_t>> handle_copy();
+  std::optional<std::pair<std::unique_ptr<char[]>, size_t>> handle_copy();
 
   // Mutex, Condition and ReadWriteLock must be POD type to use shared memory
   class Mutex {
@@ -206,9 +206,9 @@ private:
 
   typedef struct _ShmHeader {
     size_t _capacity; // max number of logs
-    size_t _begin;       // start index of the circular buffer
-    size_t _end;         // end index of the circular buffer
-    size_t _cnt;         // number of entries in the circular buffer
+    size_t _begin;    // start index of the circular buffer
+    size_t _end;      // end index of the circular buffer
+    size_t _cnt;      // number of entries in the circular buffer
   } ShmHeader;
 
   ShmHeader* _hdr;
@@ -321,13 +321,13 @@ inline void ShmRingBufferPayload::clear() {
   _lock->write_unlock();
 }
 
-inline bool ShmRingBufferPayload::push_back(const char* begin, uint32_t len) {
+inline bool ShmRingBufferPayload::push_back(const char* begin, size_t len) {
   assert(_hdr != NULL);
   assert(_v != NULL);
 
   _lock->write_lock();
   // check space left
-  uint32_t _bytes_left{0};
+  size_t _bytes_left{0};
 
   if (_hdr->_begin != _hdr->_end) {
     _bytes_left = (_hdr->_begin > _hdr->_end)
@@ -335,12 +335,12 @@ inline bool ShmRingBufferPayload::push_back(const char* begin, uint32_t len) {
                       : _hdr->_begin + _hdr->_capacity - _hdr->_end;
     // _hdr->_begin == _hdr->_end has two implications: empty or full
   } else if (_hdr->_cnt == 0) {
-    _bytes_left = _hdr->_capacity - sizeof(uint32_t);
+    _bytes_left = _hdr->_capacity - sizeof(size_t);
   } else {
     _bytes_left = 0;
   }
 
-  if (_bytes_left < len + sizeof(uint32_t)) {
+  if (_bytes_left < len + sizeof(size_t)) {
     _lock->write_unlock();
     return false; // not enough space to hold payload
   }
@@ -349,14 +349,14 @@ inline bool ShmRingBufferPayload::push_back(const char* begin, uint32_t len) {
   for (int i = 0; i < 4; ++i) {
     memcpy(_v + (_hdr->_end + i) % _hdr->_capacity, (char*)&len + i, 1);
   }
-  _hdr->_end = (_hdr->_end + sizeof(uint32_t)) % _hdr->_capacity;
+  _hdr->_end = (_hdr->_end + sizeof(size_t)) % _hdr->_capacity;
   // copy payload
   if ((_hdr->_begin > _hdr->_end) ||
       (_hdr->_capacity - _hdr->_end >=
        len)) { // one copy is enough(len can be 0)
     memcpy(_v + _hdr->_end, begin, len);
   } else { // need two copies
-    uint32_t _fir_copy = _hdr->_capacity - _hdr->_end;
+    size_t _fir_copy = _hdr->_capacity - _hdr->_end;
     memcpy(_v + _hdr->_end, begin, _fir_copy);
     memcpy(_v, begin + _fir_copy, len - _fir_copy);
   }
@@ -366,14 +366,14 @@ inline bool ShmRingBufferPayload::push_back(const char* begin, uint32_t len) {
   return true;
 }
 
-inline std::optional<std::pair<std::unique_ptr<char[]>, uint32_t>>
+inline std::optional<std::pair<std::unique_ptr<char[]>, size_t>>
 ShmRingBufferPayload::handle_copy() {
   if (_hdr->_cnt != 0) {
-    uint32_t len{0};
+    size_t len{0};
     for (int i = 0; i < 4; ++i) { // deserialize count byte-wise
       memcpy((char*)&len + i, _v + ((_hdr->_begin + i) % _hdr->_capacity), 1);
     }
-    auto _p_data = (_hdr->_begin + sizeof(uint32_t)) % _hdr->_capacity;
+    auto _p_data = (_hdr->_begin + sizeof(size_t)) % _hdr->_capacity;
     if (len == 0) {
       return std::make_pair(nullptr, len);
     } else {
@@ -383,7 +383,7 @@ ShmRingBufferPayload::handle_copy() {
       if (_hdr->_end > _p_data || _hdr->_capacity - _p_data >= len) {
         memcpy(storage.get(), _v + _p_data, len); // one copy(len can be 0)
       } else {                                    // two copies
-        uint32_t _fir_copy = _hdr->_capacity - _p_data;
+        size_t _fir_copy = _hdr->_capacity - _p_data;
         memcpy(storage.get(), _v + _p_data, _fir_copy);
         memcpy(storage.get() + _fir_copy, _v, len - _fir_copy);
       }
@@ -394,15 +394,15 @@ ShmRingBufferPayload::handle_copy() {
   }
 }
 
-inline std::optional<std::pair<std::unique_ptr<char[]>, uint32_t>>
+inline std::optional<std::pair<std::unique_ptr<char[]>, size_t>>
 ShmRingBufferPayload::pop_front() {
   assert(_hdr != NULL);
   assert(_v != NULL);
   _lock->write_lock();
   auto ret = handle_copy();
   if (ret) {
-    _hdr->_begin = (_hdr->_begin + sizeof(uint32_t) + ret.value().second) %
-                   _hdr->_capacity;
+    _hdr->_begin =
+        (_hdr->_begin + sizeof(size_t) + ret.value().second) % _hdr->_capacity;
     _hdr->_cnt--; // removing consumed entities
   }
 
@@ -410,7 +410,7 @@ ShmRingBufferPayload::pop_front() {
   return ret;
 }
 
-inline std::optional<std::pair<std::unique_ptr<char[]>, uint32_t>>
+inline std::optional<std::pair<std::unique_ptr<char[]>, size_t>>
 ShmRingBufferPayload::peek_front() {
   assert(_hdr != NULL);
   assert(_v != NULL);
