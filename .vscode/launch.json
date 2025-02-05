@@ -8,7 +8,7 @@
             "name": "(gdb) Launch",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/shmringbuffer_payload",
+            "program": "${workspaceFolder}/build/peek_test",
             "args": [],
             "stopAtEntry": true,
             "cwd": "${fileDirname}",

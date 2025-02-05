@@ -60,16 +60,15 @@ int main() {
       // Child2, reading
       usleep(5000);
       ShmRingBufferPayload buffer(CAPACITY, false);
-      char buf[100];
       int cnt{0};
-      auto p = buffer.pop_front(buf, 100);
-      // WARN: possible exit before pop all buffers
-      while (p != -1 || buffer.count() > 0) {
-        std::cout << "pop_ front: " << buf << std::endl;
-        if (p)
+      auto p = buffer.pop_front();
+      while (p || buffer.count() > 0) {
+        if (p) {
+          std::cout << "pop_ front: " << p.value().first.get() << std::endl;
           cnt++;
+        }
         usleep(rand() % 900 + 500);
-        p = buffer.pop_front(buf, 100);
+        p = buffer.pop_front();
       }
       std::cout << "pop_front: " << cnt << std::endl;
       exit(0);

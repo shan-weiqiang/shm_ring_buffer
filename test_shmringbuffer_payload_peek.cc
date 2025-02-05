@@ -45,15 +45,13 @@ int main() {
     // parent process
     std::cout << "parent" << std::endl;
     ShmRingBufferPayload buffer(CAPACITY, true);
-    char buf[100];
     int cnt{0};
-    auto p = buffer.peek_front(buf, 100);
-    // WARN: possible exit before pop all buffers
+    auto p = buffer.peek_front();
     while (true) {
-      std::cout << "peek front: " << buf << std::endl;
-      std::memset(buf, 0, sizeof(buf));
+      if (p)
+        std::cout << "peek front: " << p.value().first.get() << std::endl;
       usleep(rand() % 900 + 500);
-      p = buffer.peek_front(buf, 100);
+      p = buffer.peek_front();
       std::cout << "current cnt: " << buffer.count() << std::endl;
     }
   } else {

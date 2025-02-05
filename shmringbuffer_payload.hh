@@ -4,7 +4,7 @@
 *
 * The code in this file includes modifications and additions to the original
 * work which is licensed under the MIT License. See below for the original
-* copyright notice.
+* copyright notice. C++ 17 and above required.
 *
 * ----------------------------------------------------------------------------
 * MIT License
@@ -44,6 +44,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <fcntl.h> /* For O_CREAT, O_RDWR */
+#include <memory>
+#include <optional>
 #include <pthread.h>
 #include <string>
 #include <sys/mman.h> /* shared memory and mmap() */
@@ -51,6 +53,7 @@
 #include <sys/stat.h> /* S_IRWXU */
 #include <sys/types.h>
 #include <unistd.h>
+#include <utility>
 
 using std::string;
 
@@ -88,14 +91,13 @@ public:
 
   void clear();                          // clear buffer
   bool push_back(const char*, uint32_t); // insert new event
-  int32_t pop_front(
-      char*,
-      uint32_t); // return -1 for fail; payload length for success
-  int32_t peek_front(char*, uint32_t); // return -1 for fail; payload length
-                                       // for success; does not remove element
-  string unparse() const; // dump contents in the buffer to a string
+  std::optional<std::pair<std::unique_ptr<char[]>, uint32_t>> pop_front();
+  std::optional<std::pair<std::unique_ptr<char[]>, uint32_t>> peek_front();
+  // for success,does not remove element
 
 private:
+  std::optional<std::pair<std::unique_ptr<char[]>, uint32_t>> handle_copy();
+
   // Mutex, Condition and ReadWriteLock must be POD type to use shared memory
   class Mutex {
   public:
@@ -363,87 +365,58 @@ inline bool ShmRingBufferPayload::push_back(const char* begin, uint32_t len) {
   _lock->write_unlock();
   return true;
 }
-/**
- * IMPORTANT:Caller need to know previously about the max length of all
- * payloads. Since multiple readers and writers are suppotted, we cannot give
- * lenght of next payload to the caller. Also we cannot give a max length of all
- * stored payloads from within. User need to record max length according to
- * push_back(..) calls and assure that legal_len is enough to hold the
- * about-to-popped payload.
- */
-inline int32_t ShmRingBufferPayload::pop_front(char* dst, uint32_t legal_len) {
-  assert(_hdr != NULL);
-  assert(_v != NULL);
-  int32_t bytes = -1;
-  _lock->write_lock();
+
+inline std::optional<std::pair<std::unique_ptr<char[]>, uint32_t>>
+ShmRingBufferPayload::handle_copy() {
   if (_hdr->_cnt != 0) {
     uint32_t len{0};
     for (int i = 0; i < 4; ++i) { // deserialize count byte-wise
       memcpy((char*)&len + i, _v + ((_hdr->_begin + i) % _hdr->_capacity), 1);
     }
-    if (legal_len < len) {
-      _lock->write_unlock();
-      return -1; // not enough space to hold payload
+    auto _p_data = (_hdr->_begin + sizeof(uint32_t)) % _hdr->_capacity;
+    if (len == 0) {
+      return std::make_pair(nullptr, len);
+    } else {
+      // allocate memory
+      auto storage = std::make_unique<char[]>(len);
+      // copy data
+      if (_hdr->_end > _p_data || _hdr->_capacity - _p_data >= len) {
+        memcpy(storage.get(), _v + _p_data, len); // one copy(len can be 0)
+      } else {                                    // two copies
+        uint32_t _fir_copy = _hdr->_capacity - _p_data;
+        memcpy(storage.get(), _v + _p_data, _fir_copy);
+        memcpy(storage.get() + _fir_copy, _v, len - _fir_copy);
+      }
+      return std::make_pair(std::move(storage), len);
     }
-    _hdr->_begin = (_hdr->_begin + sizeof(uint32_t)) % _hdr->_capacity;
-    // copy data
-    if (_hdr->_end > _hdr->_begin || _hdr->_capacity - _hdr->_begin >= len) {
-      memcpy(dst, _v + _hdr->_begin, len); // one copy(len can be 0)
-    } else {                               // two copies
-      uint32_t _fir_copy = _hdr->_capacity - _hdr->_begin;
-      memcpy(dst, _v + _hdr->_begin, _fir_copy);
-      memcpy(dst + _fir_copy, _v, len - _fir_copy);
-    }
-    _hdr->_begin = (_hdr->_begin + len) % _hdr->_capacity;
+  } else {
+    return std::nullopt;
+  }
+}
+
+inline std::optional<std::pair<std::unique_ptr<char[]>, uint32_t>>
+ShmRingBufferPayload::pop_front() {
+  assert(_hdr != NULL);
+  assert(_v != NULL);
+  _lock->write_lock();
+  auto ret = handle_copy();
+  if (ret) {
+    _hdr->_begin = (_hdr->_begin + sizeof(uint32_t) + ret.value().second) %
+                   _hdr->_capacity;
     _hdr->_cnt--; // removing consumed entities
-    bytes = len;
   }
+
   _lock->write_unlock();
-  return bytes;
+  return ret;
 }
 
-inline int32_t ShmRingBufferPayload::peek_front(char* dst, uint32_t legal_len) {
+inline std::optional<std::pair<std::unique_ptr<char[]>, uint32_t>>
+ShmRingBufferPayload::peek_front() {
   assert(_hdr != NULL);
   assert(_v != NULL);
-  int32_t bytes = -1;
   _lock->write_lock();
-  int origin_begin = _hdr->_begin;
-  if (_hdr->_cnt != 0) {
-    uint32_t len{0};
-    for (int i = 0; i < 4; ++i) { // deserialize count byte-wise
-      memcpy((char*)&len + i, _v + ((_hdr->_begin + i) % _hdr->_capacity), 1);
-    }
-    if (legal_len < len) {
-      _lock->write_unlock();
-      return -1; // not enough space to hold payload
-    }
-    _hdr->_begin = (_hdr->_begin + sizeof(uint32_t)) % _hdr->_capacity;
-    // copy data
-    if (_hdr->_end > _hdr->_begin || _hdr->_capacity - _hdr->_begin >= len) {
-      memcpy(dst, _v + _hdr->_begin, len); // one copy(len can be 0)
-    } else {                               // two copies
-      uint32_t _fir_copy = _hdr->_capacity - _hdr->_begin;
-      memcpy(dst, _v + _hdr->_begin, _fir_copy);
-      memcpy(dst + _fir_copy, _v, len - _fir_copy);
-    }
-    _hdr->_begin = origin_begin;
-    bytes = len;
-  }
+  auto ret = handle_copy();
   _lock->write_unlock();
-  return bytes;
-}
-
-inline string ShmRingBufferPayload::unparse() const {
-  assert(_hdr != NULL);
-  assert(_v != NULL);
-
-  string ret;
-  _lock->read_lock();
-  if (_hdr->_begin == _hdr->_end) {
-    _lock->read_unlock();
-    return string();
-  }
-  _lock->read_unlock();
   return ret;
 }
 
